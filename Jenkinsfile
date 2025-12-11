@@ -9,7 +9,7 @@ pipeline {
         IMAGE_NAME = 'my-flask-app'
         IMAGE_TAG = 'latest'
         AWS_REGION = 'eu-north-1' 
-        ECS_CLUSTER = 'Flask-Cluster'
+        ECS_CLUSTER = 'Flask-cluster'
         ECS_SERVICE = 'flask-service'
     }
 
