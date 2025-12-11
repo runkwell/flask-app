@@ -35,7 +35,7 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 script {
-                    sh "docker push ${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${ECR_REGISTRY}"
                 }
             }
         }
