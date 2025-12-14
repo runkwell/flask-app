@@ -20,6 +20,13 @@ pipeline {
                 // Thêm kiểm tra SSH nếu cần
             }
         }
+
+        stage('Checkout Code') {
+            steps {
+                # Kéo code từ repo Git (ví dụ: GitHub, GitLab)
+                checkout scm 
+            }
+        }
         
         stage('Build Docker Image') {
             steps {
