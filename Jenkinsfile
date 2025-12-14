@@ -23,7 +23,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                # Kéo code từ repo Git (ví dụ: GitHub, GitLab)
+                // Kéo code từ repo Git (ví dụ: GitHub, GitLab)
                 checkout scm 
             }
         }
@@ -65,23 +65,23 @@ pipeline {
                 // Đây là cách sử dụng plugin 'ssh-agent' (cần cài đặt)
                 sshagent(credentials: [EC2_SSH_CRED_ID]) {
                     sh """
-                        // Lệnh SSH vào EC2 và thực hiện các bước deploy
+
                         ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << EOF
                             
                             echo "Pulling new image from Docker Hub..."
-                            // Kéo image mới nhất (sử dụng tag latest hoặc BUILD_NUMBER)
+
                             docker pull ${REPOSITORY_PATH}:latest
                             
                             echo "Stopping old container..."
-                            // Dừng container cũ nếu nó đang chạy
+
                             docker stop flask-app-container || true
                             
                             echo "Removing old container..."
-                            // Xóa container cũ
+
                             docker rm flask-app-container || true
                             
                             echo "Starting new container..."
-                            // Chạy container mới, mapping cổng 8080 host sang cổng 80 container
+
                             docker run -d \\
                                 --name flask-app-container \\
                                 -p 80:80 \\
