@@ -1,49 +1,88 @@
-// Jenkinsfile
+def DOCKER_HUB_USER = 'YOUR_DOCKERHUB_USERNAME' // Thay thế
+def IMAGE_NAME = 'flask-app'
+def EC2_HOST = '56.228.13.192' // Thay thế
+def EC2_USER = 'ec2-user' // Hoặc 'ec2-user', tùy thuộc OS của EC2 Target
+def DOCKER_HUB_CRED_ID = 'DockerHub-Cred' // ID Credentials trong Jenkins
+def EC2_SSH_CRED_ID = 'EC2-SSH-Key' // ID Credentials trong Jenkins
+def REPOSITORY_PATH = "${DOCKER_HUB_USER}/${IMAGE_NAME}"
+
 pipeline {
-    agent any
-    
-    // Khai báo các biến môi trường
-    environment {
-        // Thay bằng URI ECR của bạn
-        ECR_REGISTRY = '325538745984.dkr.ecr.eu-north-1.amazonaws.com/my-flask-app' 
-        IMAGE_NAME = 'my-flask-app'
-        IMAGE_TAG = 'latest'
-        AWS_REGION = 'eu-north-1' 
-        ECS_CLUSTER = 'Flask-cluster'
-        ECS_SERVICE = 'flask-service'
+    agent {
+        label 'docker aws' // Đảm bảo Agent có 2 Label này
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Check Agent Tools') {
             steps {
-                checkout scm 
+                echo "Running on agent: ${env.NODE_NAME}"
+                sh 'docker info'
+                sh 'aws --version'
+                // Thêm kiểm tra SSH nếu cần
             }
         }
-
+        
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-                    
-                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                    
-                    sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    echo "Building image ${REPOSITORY_PATH}:${env.BUILD_NUMBER}"
+                    // Sử dụng BUILD_NUMBER làm tag
+                    sh "docker build -t ${REPOSITORY_PATH}:${env.BUILD_NUMBER} ."
                 }
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push to Docker Hub') {
             steps {
-                script {
-                    sh "docker push ${ECR_REGISTRY}"
+                // Sử dụng credentials Docker Hub đã tạo
+                withCredentials([usernamePassword(credentialsId: DOCKER_HUB_CRED_ID, 
+                                                passwordVariable: 'DOCKER_PASSWORD', 
+                                                usernameVariable: 'DOCKER_USER')]) {
+                    script {
+                        // Đăng nhập Docker Hub
+                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USER} --password-stdin"
+                        
+                        // Đẩy image lên Docker Hub
+                        sh "docker push ${REPOSITORY_PATH}:${env.BUILD_NUMBER}"
+                        
+                        // Đẩy tag latest (tùy chọn)
+                        sh "docker tag ${REPOSITORY_PATH}:${env.BUILD_NUMBER} ${REPOSITORY_PATH}:latest"
+                        sh "docker push ${REPOSITORY_PATH}:latest"
+                    }
                 }
             }
         }
 
-        stage('Deploy to ECS') {
+        stage('Deploy to EC2') {
             steps {
-                script {
-                    sh "aws ecs update-service --cluster ${ECS_CLUSTER} --service ${ECS_SERVICE} --force-new-deployment --region ${AWS_REGION}"
+                // Sử dụng SSH Agent Plugin hoặc SSH Steps
+                // Đây là cách sử dụng plugin 'ssh-agent' (cần cài đặt)
+                sshagent(credentials: [EC2_SSH_CRED_ID]) {
+                    sh """
+                        // Lệnh SSH vào EC2 và thực hiện các bước deploy
+                        ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << EOF
+                            
+                            echo "Pulling new image from Docker Hub..."
+                            // Kéo image mới nhất (sử dụng tag latest hoặc BUILD_NUMBER)
+                            docker pull ${REPOSITORY_PATH}:latest
+                            
+                            echo "Stopping old container..."
+                            // Dừng container cũ nếu nó đang chạy
+                            docker stop flask-app-container || true
+                            
+                            echo "Removing old container..."
+                            // Xóa container cũ
+                            docker rm flask-app-container || true
+                            
+                            echo "Starting new container..."
+                            // Chạy container mới, mapping cổng 8080 host sang cổng 80 container
+                            docker run -d \\
+                                --name flask-app-container \\
+                                -p 80:80 \\
+                                ${REPOSITORY_PATH}:latest
+                            
+                            echo "Deployment finished."
+                        EOF
+                    """
                 }
             }
         }
